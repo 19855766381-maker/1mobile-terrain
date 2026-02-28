@@ -1,1 +1,1760 @@
-file:///storage/emulated/0/Android/data/mark.via/cache/content/index.html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地形编辑器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        .hex-cell {
+            width: 40px;
+            height: 46px;
+            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s, filter 0.2s;
+        }
+        
+        .hex-cell:hover {
+            transform: scale(1.1);
+            z-index: 10;
+            filter: brightness(1.2);
+        }
+        
+        .hex-cell.selected {
+            outline: 3px solid #3b82f6;
+            z-index: 5;
+        }
+        
+        .terrain-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 10px 0;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #f3f4f6;
+            cursor: pointer;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+        }
+        
+        .statistics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .data-table-container {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+        
+        .layer-controls {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+        
+        .layer-toggle {
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: #e5e7eb;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .layer-toggle.active {
+            background: #3b82f6;
+            color: white;
+            border-color: #2563eb;
+        }
+        
+        .canvas-container {
+            position: relative;
+            overflow: auto;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        
+        .operation-history {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        
+        .history-item {
+            padding: 5px;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 12px;
+        }
+        
+        .info-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            border: 1px solid #333;
+            padding: 20px;
+            display: none;
+            cursor: move;
+            user-select: none;
+            -webkit-user-select: none;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            z-index: 1000;
+            min-width: 400px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-close {
+            font-size: 24px;
+            cursor: pointer;
+        }
+        
+        .resize-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800">
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">手机版地形编辑器</h1>
+                <p class="text-gray-600">AD:《宇宙征服者》mod官群789973774 该mod及本编辑器由雪亲王制作</p>
+            </div>
+            <div class="text-right">
+                <div class="text-sm text-gray-500">版本 1.0</div>
+                <div class="text-sm text-gray-500">文件格式: 仅支持BIN格式</div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800">文件操作</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">加载BIN文件</label>
+                    <input type="file" id="binFile" accept=".bin" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                </div>
+                <div class="flex items-end">
+                    <button onclick="loadBinFile()" 
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-200">
+                        <i class="fas fa-upload mr-2"></i>加载文件
+                    </button>
+                </div>
+                <div class="flex items-end">
+                    <button onclick="saveFile()" 
+                            class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition duration-200">
+                        <i class="fas fa-save mr-2"></i>保存文件
+                    </button>
+                </div>
+                <div class="flex items-end">
+                    <button onclick="exportAsJSON()" 
+                            class="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-md transition duration-200">
+                        <i class="fas fa-file-export mr-2"></i>导出JSON
+                    </button>
+                </div>
+                <div class="flex items-end">
+                    <button onclick="showResizeModal()" 
+                            class="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-2 px-4 rounded-md transition duration-200">
+                        <i class="fas fa-expand-alt mr-2"></i>调整地图大小
+                    </button>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">地图信息</label>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        <div id="mapSizeDisplay">尺寸: 未加载</div>
+                        <div id="totalBlocks">地块总数: 0</div>
+                        <div id="fileSize">文件大小: 0 KB</div>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">显示模式</label>
+                    <div class="flex space-x-2">
+                        <button onclick="toggleDisplayMode('id')" 
+                                class="px-3 py-1.5 text-sm rounded-md bg-blue-100 text-blue-700 border border-blue-300">显示ID</button>
+                        <button onclick="toggleDisplayMode('name')" 
+                                class="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 border border-gray-300">显示名称</button>
+                        <button onclick="toggleDisplayMode('both')" 
+                                class="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 border border-gray-300">两者都显示</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">快捷操作</label>
+                    <div class="flex space-x-2">
+                        <button onclick="selectAllBlocks()" class="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200">全选</button>
+                        <button onclick="clearSelection()" class="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200">清空</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl shadow p-6 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800">地图预览</h2>
+                        <div class="flex items-center space-x-2">
+                            <div class="text-sm text-gray-600">选中地块: <span id="selectedBlockCount">0</span> 个</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <div class="text-sm text-gray-600">快捷键: 按 C 复制数据，按 V 粘贴数据</div>
+                            <button onclick="toggleInfoBox()" 
+                                    class="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200">
+                                显示/隐藏信息框
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="canvas-container" id="canvasContainer">
+                        <canvas id="mapCanvas"></canvas>
+                    </div>
+                    
+                    <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+                        <h3 class="font-medium text-gray-700 mb-2">地形图例</h3>
+                        <div class="terrain-legend" id="terrainLegend"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">地图统计</h2>
+                    <div class="statistics-grid" id="statisticsGrid"></div>
+                </div>
+            </div>
+            
+            <div class="space-y-6">
+                <div class="bg-white rounded-xl shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">地块编辑</h2>
+                    <div id="blockInfo" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">地块ID</label>
+                                <input type="text" id="blockId" readonly 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-gray-50">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">坐标 (X,Y)</label>
+                                <input type="text" id="blockCoord" readonly 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-gray-50">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h3 class="font-medium text-gray-700 mb-2 text-sm">主地形 (bmTerrain1)</h3>
+                            <div class="grid grid-cols-4 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">组</label>
+                                    <input type="number" id="bmTerrain1Group" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">号</label>
+                                    <input type="number" id="bmTerrain1Id" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">X</label>
+                                    <input type="number" id="bmTerrain1X" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">Y</label>
+                                    <input type="number" id="bmTerrain1Y" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h3 class="font-medium text-gray-700 mb-2 text-sm">装饰1 (decoration1)</h3>
+                            <div class="grid grid-cols-4 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">组</label>
+                                    <input type="number" id="decoration1Group" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">号</label>
+                                    <input type="number" id="decoration1Id" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">X</label>
+                                    <input type="number" id="decoration1X" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">Y</label>
+                                    <input type="number" id="decoration1Y" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h3 class="font-medium text-gray-700 mb-2 text-sm">装饰2 (decoration2)</h3>
+                            <div class="grid grid-cols-4 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">组</label>
+                                    <input type="number" id="decoration2Group" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">号</label>
+                                    <input type="number" id="decoration2Id" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">X</label>
+                                    <input type="number" id="decoration2X" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">Y</label>
+                                    <input type="number" id="decoration2Y" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h3 class="font-medium text-gray-700 mb-2 text-sm">底板 (floor)</h3>
+                            <div class="grid grid-cols-4 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">组</label>
+                                    <input type="number" id="floorGroup" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">号</label>
+                                    <input type="number" id="floorId" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">X</label>
+                                    <input type="number" id="floorX" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">Y</label>
+                                    <input type="number" id="floorY" min="0" max="255"
+                                           class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="pt-3 border-t border-gray-200">
+                            <div class="flex space-x-2">
+                                <button onclick="applyChanges()" 
+                                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-200">
+                                    应用更改
+                                </button>
+                                <button onclick="fillSelected()" 
+                                        class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition duration-200">
+                                    填充选中
+                                </button>
+                                <button onclick="resetBlock()" 
+                                        class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-md transition duration-200">
+                                    重置
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">批量操作</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">批量设置地形组</label>
+                            <div class="flex space-x-2">
+                                <select id="batchTerrainGroup" 
+                                        class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm">
+                                    <option value="0">平地 (0)</option>
+                                    <option value="1">海洋 (1)</option>
+                                    <option value="2">沙漠 (2)</option>
+                                    <option value="16">阔叶林 (16)</option>
+                                    <option value="20">针叶林 (20)</option>
+                                    <option value="26">农田 (26)</option>
+                                    <option value="30">坑 (30)</option>
+                                    <option value="31">雪地 (31)</option>
+                                </select>
+                                <button onclick="batchSetTerrain()" 
+                                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">
+                                    应用到选中
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">操作历史</label>
+                            <div class="operation-history" id="operationHistory"></div>
+                            <div class="flex justify-between mt-2">
+                                <button onclick="undo()" 
+                                        class="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200">
+                                    <i class="fas fa-undo mr-1"></i>撤销
+                                </button>
+                                <button onclick="redo()" 
+                                        class="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200">
+                                    <i class="fas fa-redo mr-1"></i>重做
+                                </button>
+                                <button onclick="clearHistory()" 
+                                        class="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200">
+                                    清空历史
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">数据表视图</h2>
+                    <div class="data-table-container">
+                        <table class="w-full border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th class="px-4 py-3">ID</th>
+                                    <th class="px-4 py-3">地形组</th>
+                                    <th class="px-4 py-3">地形号</th>
+                                    <th class="px-4 py-3">坐标</th>
+                                    <th class="px-4 py-3">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody" class="divide-y divide-gray-200">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-6 p-4 bg-white rounded-xl shadow flex justify-between items-center">
+            <div id="status" class="text-gray-600">状态：等待加载文件</div>
+            <div class="text-sm text-gray-500">
+                已选中: <span id="selectedCount">0</span> 个地块 | 快捷键: C=复制 V=粘贴
+            </div>
+        </div>
+    </div>
+
+    <div id="infoBox" class="info-box">
+        <span id="infoBoxClose" onclick="closeInfoBox()" class="absolute top-2 right-2 text-xl cursor-pointer">&times;</span>
+        <h2 class="text-xl font-semibold mb-4">地块信息</h2>
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">地块 ID:</label>
+                <input type="number" id="infoBlockId" readonly class="w-full px-3 py-2 border border-gray-300 rounded text-sm bg-gray-50">
+            </div>
+        </div>
+        
+        <div class="space-y-4">
+            <div>
+                <h3 class="font-medium text-gray-700 mb-2 text-sm">主地形</h3>
+                <div class="grid grid-cols-4 gap-2">
+                    <div><input type="number" id="infoBmTerrain1Group" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoBmTerrain1Id" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoBmTerrain1X" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoBmTerrain1Y" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="font-medium text-gray-700 mb-2 text-sm">装饰1</h3>
+                <div class="grid grid-cols-4 gap-2">
+                    <div><input type="number" id="infoDecoration1Group" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoDecoration1Id" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoDecoration1X" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoDecoration1Y" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="font-medium text-gray-700 mb-2 text-sm">装饰2</h3>
+                <div class="grid grid-cols-4 gap-2">
+                    <div><input type="number" id="infoDecoration2Group" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoDecoration2Id" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoDecoration2X" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoDecoration2Y" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="font-medium text-gray-700 mb-2 text-sm">底板</h3>
+                <div class="grid grid-cols-4 gap-2">
+                    <div><input type="number" id="infoFloorGroup" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoFloorId" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoFloorX" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                    <div><input type="number" id="infoFloorY" class="w-full px-2 py-1 border border-gray-300 rounded text-sm"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex space-x-2 mt-6">
+            <button onclick="copyBlockInfo()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded text-sm">复制</button>
+            <button onclick="pasteBlockInfo()" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded text-sm">粘贴</button>
+            <button onclick="saveTempChanges()" class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded text-sm">暂存</button>
+            <button onclick="saveFile()" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded text-sm">保存</button>
+        </div>
+    </div>
+
+    <div id="resizeModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="text-xl font-semibold text-gray-800">调整地图大小</h2>
+                <span class="modal-close" onclick="closeResizeModal()">&times;</span>
+            </div>
+            
+            <div class="mb-4">
+                <p class="text-gray-600 mb-4">当前地图尺寸: <span id="currentMapSize">未加载</span></p>
+                
+                <div class="resize-grid">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">新宽度 (X)</label>
+                        <input type="number" id="newMapWidth" min="1" max="200" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" 
+                               placeholder="宽度">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">新高度 (Y)</label>
+                        <input type="number" id="newMapHeight" min="1" max="200" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" 
+                               placeholder="高度">
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">调整选项</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center">
+                            <input type="radio" name="resizeOption" value="preserve" checked class="mr-2">
+                            <span class="text-sm">保留现有数据（裁剪或填充）</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="resizeOption" value="clear" class="mr-2">
+                            <span class="text-sm">清除所有数据（创建空白地图）</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">填充位置</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="setAnchor('top-left')" class="px-3 py-2 bg-gray-100 rounded text-sm">左上</button>
+                        <button onclick="setAnchor('top')" class="px-3 py-2 bg-gray-100 rounded text-sm">上中</button>
+                        <button onclick="setAnchor('top-right')" class="px-3 py-2 bg-gray-100 rounded text-sm">右上</button>
+                        <button onclick="setAnchor('left')" class="px-3 py-2 bg-gray-100 rounded text-sm">左中</button>
+                        <button onclick="setAnchor('center')" class="px-3 py-2 bg-blue-100 text-blue-700 rounded text-sm">中心</button>
+                        <button onclick="setAnchor('right')" class="px-3 py-2 bg-gray-100 rounded text-sm">右中</button>
+                        <button onclick="setAnchor('bottom-left')" class="px-3 py-2 bg-gray-100 rounded text-sm">左下</button>
+                        <button onclick="setAnchor('bottom')" class="px-3 py-2 bg-gray-100 rounded text-sm">下中</button>
+                        <button onclick="setAnchor('bottom-right')" class="px-3 py-2 bg-gray-100 rounded text-sm">右下</button>
+                    </div>
+                </div>
+                
+                <div class="mt-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">预览</label>
+                    <div class="p-4 bg-gray-50 rounded-md">
+                        <div class="text-sm text-gray-600">
+                            <p>新地图尺寸: <span id="newSizePreview">0 x 0</span></p>
+                            <p>地块总数: <span id="newBlockCount">0</span></p>
+                            <p>数据变化: <span id="dataChangeInfo">无变化</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-2">
+                <button onclick="closeResizeModal()" 
+                        class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-md text-sm">
+                    取消
+                </button>
+                <button onclick="applyResize()" 
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">
+                    应用调整
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class BinInfo {
+            constructor() {
+                this.binUnknown1 = 0;
+                this.binUnknown2 = 0;
+                this.binMapx = 0;
+                this.binMapy = 0;
+            }
+        }
+
+        class TerrainBlock {
+            constructor() {
+                this.bmTerrain1Group = 0;
+                this.bmTerrain1Id = 0;
+                this.bmTerrain1X = 0;
+                this.bmTerrain1Y = 0;
+                this.decoration1Group = 0;
+                this.decoration1Id = 0;
+                this.decoration1X = 0;
+                this.decoration1Y = 0;
+                this.decoration2Group = 0;
+                this.decoration2Id = 0;
+                this.decoration2X = 0;
+                this.decoration2Y = 0;
+                this.floorGroup = 0;
+                this.floorId = 0;
+                this.floorX = 0;
+                this.floorY = 0;
+            }
+        }
+
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        let binInfo = new BinInfo();
+        let terrainData = [];
+        let selectedBlocks = new Set();
+        let copiedBlockInfo = null;
+        let originalFileData = null;
+        let currentBlockIndex = null;
+        let displayMode = false;
+        let operationHistory = [];
+        let historyIndex = -1;
+        let isDragging = false;
+        let offsetX, offsetY;
+        let resizeAnchor = 'center';
+        let fileHeaderBytes = null;
+        
+        const terrainGroupNameMap = {
+            0: "平地", 1: "海洋", 2: "沙漠", 3: "矮雪山", 4: "中雪山", 5: "高雪山",
+            6: "矮土山", 7: "中土山", 8: "高土山", 9: "矮绿山", 10: "中绿山",
+            11: "高绿山", 12: "矮沙山", 13: "中沙山", 14: "高沙山", 15: "仙人掌",
+            16: "阔叶林", 17: "", 18: "积雪阔叶林", 19: "", 20: "针叶林",
+            21: "积雪针叶林", 22: "热带森林", 23: "", 24: "", 25: "", 26: "农田",
+            27: "", 28: "", 29: "", 30: "坑", 31: "雪地"
+        };
+
+        const terrainColorMap = {
+            0: '#f0f0f0', 1: '#4f81c7', 2: '#f4e7c3', 3: '#e0f7fa', 4: '#b2ebf2',
+            5: '#80deea', 6: '#8d6e63', 7: '#6d4c41', 8: '#4e342e', 9: '#81c784',
+            10: '#4caf50', 11: '#388e3c', 12: '#ffcc80', 13: '#ffb74d', 14: '#ff9800',
+            15: '#689f38', 16: '#2e7d32', 18: '#a5d6a7', 20: '#1b5e20', 21: '#b2dfdb',
+            22: '#1b5e20', 26: '#ffd54f', 30: '#795548', 31: '#ffffff'
+        };
+
+        function getTerrainColor(terrainGroup) {
+            if (terrainGroup === 0 || (terrainGroup >= 2 && terrainGroup <= 10)) {
+                return '#FFFFFF';
+            } else if (terrainGroup === 1) {
+                return '#0000FF';
+            }
+            return terrainColorMap[terrainGroup] || '#FFFFFF';
+        }
+
+        function init() {
+            setupEventListeners();
+            createTerrainLegend();
+            setupResizePreview();
+        }
+
+        function setupEventListeners() {
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'c' || e.key === 'C') {
+                    copyBlockInfo();
+                } else if (e.key === 'v' || e.key === 'V') {
+                    pasteBlockInfo();
+                }
+            });
+
+            const infoBox = document.getElementById('infoBox');
+            infoBox.addEventListener('mousedown', startDrag);
+            document.addEventListener('mousemove', moveDrag);
+            document.addEventListener('mouseup', endDrag);
+            
+            document.getElementById('newMapWidth').addEventListener('input', updateResizePreview);
+            document.getElementById('newMapHeight').addEventListener('input', updateResizePreview);
+        }
+
+        function setupResizePreview() {
+            updateResizePreview();
+        }
+
+        function createTerrainLegend() {
+            const legendContainer = document.getElementById('terrainLegend');
+            legendContainer.innerHTML = '';
+            
+            Object.entries(terrainColorMap).forEach(([groupId, color]) => {
+                const name = terrainGroupNameMap[groupId] || `组${groupId}`;
+                if (name) {
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+                    legendItem.innerHTML = `
+                        <div class="legend-color" style="background-color: ${color}"></div>
+                        <span class="text-sm">${name} (${groupId})</span>
+                    `;
+                    legendItem.onclick = () => {
+                        document.getElementById('batchTerrainGroup').value = groupId;
+                        batchSetTerrain();
+                    };
+                    legendContainer.appendChild(legendItem);
+                }
+            });
+        }
+
+        function loadBinFile() {
+            const fileInput = document.getElementById('binFile');
+            if (!fileInput.files.length) {
+                updateStatus('请先选择文件', 'error');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const buffer = e.target.result;
+                originalFileData = new Uint8Array(buffer);
+                const dataView = new DataView(buffer);
+                updateStatus("正在解析BIN文件...");
+
+                try {
+                    binInfo.binUnknown1 = dataView.getUint32(0, true);
+                    binInfo.binUnknown2 = dataView.getUint32(4, true);
+                    binInfo.binMapx = dataView.getUint32(8, true);
+                    binInfo.binMapy = dataView.getUint32(12, true);
+                    
+                    fileHeaderBytes = originalFileData.slice(0, 16);
+                    
+                    document.getElementById('mapSizeDisplay').textContent = 
+                        `尺寸: ${binInfo.binMapx} × ${binInfo.binMapy}`;
+                    document.getElementById('totalBlocks').textContent = 
+                        `地块总数: ${binInfo.binMapx * binInfo.binMapy}`;
+                    document.getElementById('fileSize').textContent = 
+                        `文件大小: ${(buffer.byteLength / 1024).toFixed(2)} KB`;
+
+                    const terrainStart = 16;
+                    const blockSize = 16;
+                    const totalBlocks = binInfo.binMapx * binInfo.binMapy;
+
+                    terrainData = [];
+                    for (let i = 0; i < totalBlocks; i++) {
+                        const offset = terrainStart + i * blockSize;
+                        if (offset + blockSize > dataView.byteLength) {
+                            updateStatus(`文件内容不足，仅读取了 ${i} 个地形块`, 'warning');
+                            break;
+                        }
+                        const block = new TerrainBlock();
+                        block.bmTerrain1Group = dataView.getUint8(offset + 0);
+                        block.bmTerrain1Id = dataView.getUint8(offset + 1);
+                        block.bmTerrain1X = dataView.getUint8(offset + 2);
+                        block.bmTerrain1Y = dataView.getUint8(offset + 3);
+                        block.decoration1Group = dataView.getUint8(offset + 4);
+                        block.decoration1Id = dataView.getUint8(offset + 5);
+                        block.decoration1X = dataView.getUint8(offset + 6);
+                        block.decoration1Y = dataView.getUint8(offset + 7);
+                        block.decoration2Group = dataView.getUint8(offset + 8);
+                        block.decoration2Id = dataView.getUint8(offset + 9);
+                        block.decoration2X = dataView.getUint8(offset + 10);
+                        block.decoration2Y = dataView.getUint8(offset + 11);
+                        block.floorGroup = dataView.getUint8(offset + 12);
+                        block.floorId = dataView.getUint8(offset + 13);
+                        block.floorX = dataView.getUint8(offset + 14);
+                        block.floorY = dataView.getUint8(offset + 15);
+                        terrainData.push(block);
+                    }
+
+                    updateStatus("解析完成，正在绘制地图...");
+                    drawMap();
+                    updateStatistics();
+                    updateDataTable();
+                    updateCurrentMapSize();
+
+                } catch (error) {
+                    updateStatus(`解析错误：${error.message}`, 'error');
+                    console.error(error);
+                }
+            };
+            
+            reader.onerror = function() {
+                updateStatus('文件读取失败', 'error');
+            };
+            
+            reader.readAsArrayBuffer(file);
+        }
+
+        function drawMap() {
+            if (terrainData.length === 0) return;
+            
+            const hexSize = 20;
+            canvas.width = binInfo.binMapx * hexSize * 1.5 + 2 * hexSize;
+            canvas.height = binInfo.binMapy * hexSize * Math.sqrt(3) + 2 * hexSize;
+
+            const offsetX = hexSize;
+            const offsetY = hexSize;
+
+            for (let y = 0; y < binInfo.binMapy; y++) {
+                for (let x = 0; x < binInfo.binMapx; x++) {
+                    const index = y * binInfo.binMapx + x;
+                    const block = terrainData[index] || new TerrainBlock();
+                    const color = getTerrainColor(block.bmTerrain1Group);
+
+                    const points = getHexPoints(x, y, hexSize, offsetX, offsetY);
+
+                    ctx.beginPath();
+                    ctx.moveTo(points[0].x, points[0].y);
+                    for (let i = 1; i < points.length; i++) {
+                        ctx.lineTo(points[i].x, points[i].y);
+                    }
+                    ctx.closePath();
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    
+                    if (selectedBlocks.has(index)) {
+                        ctx.strokeStyle = '#3b82f6';
+                        ctx.lineWidth = 3;
+                    } else {
+                        ctx.strokeStyle = '#333';
+                        ctx.lineWidth = 1;
+                    }
+                    ctx.stroke();
+
+                    const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+                    const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+                    
+                    ctx.fillStyle = selectedBlocks.has(index) ? '#ffffff' : 'black';
+                    ctx.textAlign = 'center';
+                    
+                    if (displayMode) {
+                        ctx.font = '10px Arial';
+                        ctx.fillText(index, centerX, centerY);
+                    } else {
+                        ctx.font = '8px Arial';
+                        const terrainName = terrainGroupNameMap[block.bmTerrain1Group] || "";
+                        ctx.fillText(terrainName, centerX, centerY);
+                    }
+                }
+            }
+            
+            updateStatus("地图绘制完成");
+            
+            canvas.onclick = function(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                const hexSize = 20;
+                const offsetX = hexSize;
+                const offsetY = hexSize;
+
+                for (let yIndex = 0; yIndex < binInfo.binMapy; yIndex++) {
+                    for (let xIndex = 0; xIndex < binInfo.binMapx; xIndex++) {
+                        const points = getHexPoints(xIndex, yIndex, hexSize, offsetX, offsetY);
+                        if (isPointInPolygon(x, y, points)) {
+                            const index = yIndex * binInfo.binMapx + xIndex;
+                            const block = terrainData[index];
+                            
+                            if (event.shiftKey) {
+                                if (selectedBlocks.has(index)) {
+                                    selectedBlocks.delete(index);
+                                } else {
+                                    selectedBlocks.add(index);
+                                }
+                            } else {
+                                selectedBlocks.clear();
+                                selectedBlocks.add(index);
+                            }
+                            
+                            updateSelectedBlocksDisplay();
+                            drawMap();
+                            showInfoBox(block, index);
+                            return;
+                        }
+                    }
+                }
+            };
+        }
+
+        function getHexPoints(q, r, size, offsetX, offsetY) {
+            const x = size * (3 / 2 * q) + offsetX;
+            const y = size * Math.sqrt(3) * (r + (q % 2 === 0 ? 0 : 0.5)) + offsetY;
+            const points = [];
+            for (let i = 0; i < 6; i++) {
+                const angle = 2 * Math.PI * i / 6;
+                const px = x + size * Math.cos(angle);
+                const py = y + size * Math.sin(angle);
+                points.push({ x: px, y: py });
+            }
+            return points;
+        }
+
+        function isPointInPolygon(x, y, polygon) {
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].x, yi = polygon[i].y;
+                const xj = polygon[j].x, yj = polygon[j].y;
+
+                const intersect = ((yi > y) !== (yj > y)) &&
+                    (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function showInfoBox(block, index) {
+            currentBlockIndex = index;
+            
+            document.getElementById('infoBlockId').value = index;
+            document.getElementById('infoBmTerrain1Group').value = block.bmTerrain1Group;
+            document.getElementById('infoBmTerrain1Id').value = block.bmTerrain1Id;
+            document.getElementById('infoBmTerrain1X').value = block.bmTerrain1X;
+            document.getElementById('infoBmTerrain1Y').value = block.bmTerrain1Y;
+            document.getElementById('infoDecoration1Group').value = block.decoration1Group;
+            document.getElementById('infoDecoration1Id').value = block.decoration1Id;
+            document.getElementById('infoDecoration1X').value = block.decoration1X;
+            document.getElementById('infoDecoration1Y').value = block.decoration1Y;
+            document.getElementById('infoDecoration2Group').value = block.decoration2Group;
+            document.getElementById('infoDecoration2Id').value = block.decoration2Id;
+            document.getElementById('infoDecoration2X').value = block.decoration2X;
+            document.getElementById('infoDecoration2Y').value = block.decoration2Y;
+            document.getElementById('infoFloorGroup').value = block.floorGroup;
+            document.getElementById('infoFloorId').value = block.floorId;
+            document.getElementById('infoFloorX').value = block.floorX;
+            document.getElementById('infoFloorY').value = block.floorY;
+            
+            document.getElementById('blockId').value = index;
+            const x = index % binInfo.binMapx;
+            const y = Math.floor(index / binInfo.binMapx);
+            document.getElementById('blockCoord').value = `${x}, ${y}`;
+            
+            document.getElementById('bmTerrain1Group').value = block.bmTerrain1Group;
+            document.getElementById('bmTerrain1Id').value = block.bmTerrain1Id;
+            document.getElementById('bmTerrain1X').value = block.bmTerrain1X;
+            document.getElementById('bmTerrain1Y').value = block.bmTerrain1Y;
+            document.getElementById('decoration1Group').value = block.decoration1Group;
+            document.getElementById('decoration1Id').value = block.decoration1Id;
+            document.getElementById('decoration1X').value = block.decoration1X;
+            document.getElementById('decoration1Y').value = block.decoration1Y;
+            document.getElementById('decoration2Group').value = block.decoration2Group;
+            document.getElementById('decoration2Id').value = block.decoration2Id;
+            document.getElementById('decoration2X').value = block.decoration2X;
+            document.getElementById('decoration2Y').value = block.decoration2Y;
+            document.getElementById('floorGroup').value = block.floorGroup;
+            document.getElementById('floorId').value = block.floorId;
+            document.getElementById('floorX').value = block.floorX;
+            document.getElementById('floorY').value = block.floorY;
+            
+            document.getElementById('infoBox').style.display = 'block';
+            
+            updateSelectedCount();
+        }
+
+        function copyBlockInfo() {
+            if (currentBlockIndex === null) {
+                updateStatus('请先选择地块', 'warning');
+                return;
+            }
+            
+            copiedBlockInfo = {
+                bmTerrain1Group: parseInt(document.getElementById('bmTerrain1Group').value),
+                bmTerrain1Id: parseInt(document.getElementById('bmTerrain1Id').value),
+                bmTerrain1X: parseInt(document.getElementById('bmTerrain1X').value),
+                bmTerrain1Y: parseInt(document.getElementById('bmTerrain1Y').value),
+                decoration1Group: parseInt(document.getElementById('decoration1Group').value),
+                decoration1Id: parseInt(document.getElementById('decoration1Id').value),
+                decoration1X: parseInt(document.getElementById('decoration1X').value),
+                decoration1Y: parseInt(document.getElementById('decoration1Y').value),
+                decoration2Group: parseInt(document.getElementById('decoration2Group').value),
+                decoration2Id: parseInt(document.getElementById('decoration2Id').value),
+                decoration2X: parseInt(document.getElementById('decoration2X').value),
+                decoration2Y: parseInt(document.getElementById('decoration2Y').value),
+                floorGroup: parseInt(document.getElementById('floorGroup').value),
+                floorId: parseInt(document.getElementById('floorId').value),
+                floorX: parseInt(document.getElementById('floorX').value),
+                floorY: parseInt(document.getElementById('floorY').value)
+            };
+            
+            saveToHistory('复制地块数据');
+            updateStatus('已复制地块数据', 'success');
+        }
+
+        function pasteBlockInfo() {
+            if (!copiedBlockInfo) {
+                updateStatus('没有可粘贴的数据', 'warning');
+                return;
+            }
+            
+            if (selectedBlocks.size === 0) {
+                updateStatus('请先选择要粘贴到的地块', 'warning');
+                return;
+            }
+            
+            saveToHistory('粘贴数据到选中地块');
+            
+            selectedBlocks.forEach(index => {
+                terrainData[index] = {...copiedBlockInfo};
+            });
+            
+            drawMap();
+            updateDataTable();
+            updateStatus(`已粘贴到 ${selectedBlocks.size} 个地块`, 'success');
+        }
+
+        function applyChanges() {
+            if (selectedBlocks.size === 0) {
+                updateStatus('请先选择地块', 'warning');
+                return;
+            }
+            
+            saveToHistory('修改地块数据');
+            
+            selectedBlocks.forEach(index => {
+                const block = terrainData[index];
+                
+                const bmTerrain1Group = document.getElementById('bmTerrain1Group').value;
+                if (bmTerrain1Group !== '') block.bmTerrain1Group = parseInt(bmTerrain1Group);
+                
+                const bmTerrain1Id = document.getElementById('bmTerrain1Id').value;
+                if (bmTerrain1Id !== '') block.bmTerrain1Id = parseInt(bmTerrain1Id);
+                
+                const bmTerrain1X = document.getElementById('bmTerrain1X').value;
+                if (bmTerrain1X !== '') block.bmTerrain1X = parseInt(bmTerrain1X);
+                
+                const bmTerrain1Y = document.getElementById('bmTerrain1Y').value;
+                if (bmTerrain1Y !== '') block.bmTerrain1Y = parseInt(bmTerrain1Y);
+                
+                const decoration1Group = document.getElementById('decoration1Group').value;
+                if (decoration1Group !== '') block.decoration1Group = parseInt(decoration1Group);
+                
+                const decoration1Id = document.getElementById('decoration1Id').value;
+                if (decoration1Id !== '') block.decoration1Id = parseInt(decoration1Id);
+                
+                const decoration1X = document.getElementById('decoration1X').value;
+                if (decoration1X !== '') block.decoration1X = parseInt(decoration1X);
+                
+                const decoration1Y = document.getElementById('decoration1Y').value;
+                if (decoration1Y !== '') block.decoration1Y = parseInt(decoration1Y);
+                
+                const decoration2Group = document.getElementById('decoration2Group').value;
+                if (decoration2Group !== '') block.decoration2Group = parseInt(decoration2Group);
+                
+                const decoration2Id = document.getElementById('decoration2Id').value;
+                if (decoration2Id !== '') block.decoration2Id = parseInt(decoration2Id);
+                
+                const decoration2X = document.getElementById('decoration2X').value;
+                if (decoration2X !== '') block.decoration2X = parseInt(decoration2X);
+                
+                const decoration2Y = document.getElementById('decoration2Y').value;
+                if (decoration2Y !== '') block.decoration2Y = parseInt(decoration2Y);
+                
+                const floorGroup = document.getElementById('floorGroup').value;
+                if (floorGroup !== '') block.floorGroup = parseInt(floorGroup);
+                
+                const floorId = document.getElementById('floorId').value;
+                if (floorId !== '') block.floorId = parseInt(floorId);
+                
+                const floorX = document.getElementById('floorX').value;
+                if (floorX !== '') block.floorX = parseInt(floorX);
+                
+                const floorY = document.getElementById('floorY').value;
+                if (floorY !== '') block.floorY = parseInt(floorY);
+            });
+            
+            drawMap();
+            updateDataTable();
+            updateStatus('更改已应用', 'success');
+        }
+
+        function fillSelected() {
+            if (selectedBlocks.size === 0) {
+                updateStatus('请先选择要填充的地块', 'warning');
+                return;
+            }
+            
+            saveToHistory('填充选中地块');
+            
+            const template = getCurrentBlockValues();
+            selectedBlocks.forEach(index => {
+                terrainData[index] = {...template};
+            });
+            
+            drawMap();
+            updateDataTable();
+            updateStatus(`已填充 ${selectedBlocks.size} 个地块`, 'success');
+        }
+
+        function getCurrentBlockValues() {
+            return {
+                bmTerrain1Group: parseInt(document.getElementById('bmTerrain1Group').value) || 0,
+                bmTerrain1Id: parseInt(document.getElementById('bmTerrain1Id').value) || 0,
+                bmTerrain1X: parseInt(document.getElementById('bmTerrain1X').value) || 0,
+                bmTerrain1Y: parseInt(document.getElementById('bmTerrain1Y').value) || 0,
+                decoration1Group: parseInt(document.getElementById('decoration1Group').value) || 0,
+                decoration1Id: parseInt(document.getElementById('decoration1Id').value) || 0,
+                decoration1X: parseInt(document.getElementById('decoration1X').value) || 0,
+                decoration1Y: parseInt(document.getElementById('decoration1Y').value) || 0,
+                decoration2Group: parseInt(document.getElementById('decoration2Group').value) || 0,
+                decoration2Id: parseInt(document.getElementById('decoration2Id').value) || 0,
+                decoration2X: parseInt(document.getElementById('decoration2X').value) || 0,
+                decoration2Y: parseInt(document.getElementById('decoration2Y').value) || 0,
+                floorGroup: parseInt(document.getElementById('floorGroup').value) || 0,
+                floorId: parseInt(document.getElementById('floorId').value) || 0,
+                floorX: parseInt(document.getElementById('floorX').value) || 0,
+                floorY: parseInt(document.getElementById('floorY').value) || 0
+            };
+        }
+
+        function batchSetTerrain() {
+            if (selectedBlocks.size === 0) {
+                updateStatus('请先选择要修改的地块', 'warning');
+                return;
+            }
+            
+            const terrainGroup = parseInt(document.getElementById('batchTerrainGroup').value);
+            
+            saveToHistory('批量设置地形组');
+            
+            selectedBlocks.forEach(index => {
+                terrainData[index].bmTerrain1Group = terrainGroup;
+            });
+            
+            drawMap();
+            updateStatistics();
+            updateDataTable();
+            updateStatus(`已将 ${selectedBlocks.size} 个地块的地形组设置为 ${terrainGroup}`, 'success');
+        }
+
+        function resetBlock() {
+            if (selectedBlocks.size === 0) {
+                updateStatus('请先选择要重置的地块', 'warning');
+                return;
+            }
+            
+            saveToHistory('重置选中地块');
+            
+            selectedBlocks.forEach(index => {
+                terrainData[index] = new TerrainBlock();
+            });
+            
+            drawMap();
+            updateSelectedBlocksDisplay();
+            updateDataTable();
+            updateStatus(`已重置 ${selectedBlocks.size} 个地块`, 'success');
+        }
+
+        function selectAllBlocks() {
+            for (let i = 0; i < terrainData.length; i++) {
+                selectedBlocks.add(i);
+            }
+            updateSelectedBlocksDisplay();
+            drawMap();
+            updateStatus(`已选择所有 ${terrainData.length} 个地块`, 'info');
+        }
+
+        function clearSelection() {
+            selectedBlocks.clear();
+            updateSelectedBlocksDisplay();
+            drawMap();
+            updateStatus('已清空选择', 'info');
+        }
+
+        function updateSelectedBlocksDisplay() {
+            if (selectedBlocks.size === 0) {
+                document.getElementById('blockInfo').style.opacity = '0.5';
+                return;
+            }
+            
+            document.getElementById('blockInfo').style.opacity = '1';
+            
+            if (selectedBlocks.size === 1) {
+                const index = Array.from(selectedBlocks)[0];
+                const block = terrainData[index];
+                const x = index % binInfo.binMapx;
+                const y = Math.floor(index / binInfo.binMapx);
+                
+                document.getElementById('blockId').value = index;
+                document.getElementById('blockCoord').value = `${x}, ${y}`;
+                
+                document.getElementById('bmTerrain1Group').value = block.bmTerrain1Group;
+                document.getElementById('bmTerrain1Id').value = block.bmTerrain1Id;
+                document.getElementById('bmTerrain1X').value = block.bmTerrain1X;
+                document.getElementById('bmTerrain1Y').value = block.bmTerrain1Y;
+                document.getElementById('decoration1Group').value = block.decoration1Group;
+                document.getElementById('decoration1Id').value = block.decoration1Id;
+                document.getElementById('decoration1X').value = block.decoration1X;
+                document.getElementById('decoration1Y').value = block.decoration1Y;
+                document.getElementById('decoration2Group').value = block.decoration2Group;
+                document.getElementById('decoration2Id').value = block.decoration2Id;
+                document.getElementById('decoration2X').value = block.decoration2X;
+                document.getElementById('decoration2Y').value = block.decoration2Y;
+                document.getElementById('floorGroup').value = block.floorGroup;
+                document.getElementById('floorId').value = block.floorId;
+                document.getElementById('floorX').value = block.floorX;
+                document.getElementById('floorY').value = block.floorY;
+            } else {
+                document.getElementById('blockId').value = `${selectedBlocks.size} 个地块`;
+                document.getElementById('blockCoord').value = '多选';
+                
+                const inputs = document.querySelectorAll('#blockInfo input[type="number"]');
+                inputs.forEach(input => {
+                    if (input.id !== 'blockId' && input.id !== 'blockCoord') {
+                        input.value = '';
+                    }
+                });
+            }
+            
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            document.getElementById('selectedBlockCount').textContent = selectedBlocks.size;
+            document.getElementById('selectedCount').textContent = selectedBlocks.size;
+        }
+
+        function saveTempChanges() {
+            if (currentBlockIndex !== null) {
+                const tempData = {
+                    bmTerrain1Group: parseInt(document.getElementById('bmTerrain1Group').value),
+                    bmTerrain1Id: parseInt(document.getElementById('bmTerrain1Id').value),
+                    bmTerrain1X: parseInt(document.getElementById('bmTerrain1X').value),
+                    bmTerrain1Y: parseInt(document.getElementById('bmTerrain1Y').value),
+                    decoration1Group: parseInt(document.getElementById('decoration1Group').value),
+                    decoration1Id: parseInt(document.getElementById('decoration1Id').value),
+                    decoration1X: parseInt(document.getElementById('decoration1X').value),
+                    decoration1Y: parseInt(document.getElementById('decoration1Y').value),
+                    decoration2Group: parseInt(document.getElementById('decoration2Group').value),
+                    decoration2Id: parseInt(document.getElementById('decoration2Id').value),
+                    decoration2X: parseInt(document.getElementById('decoration2X').value),
+                    decoration2Y: parseInt(document.getElementById('decoration2Y').value),
+                    floorGroup: parseInt(document.getElementById('floorGroup').value),
+                    floorId: parseInt(document.getElementById('floorId').value),
+                    floorX: parseInt(document.getElementById('floorX').value),
+                    floorY: parseInt(document.getElementById('floorY').value)
+                };
+                terrainData[currentBlockIndex] = tempData;
+                updateStatus('临时更改已保存', 'info');
+            }
+        }
+
+        function saveFile() {
+            if (terrainData.length === 0) {
+                updateStatus('没有数据可保存', 'warning');
+                return;
+            }
+            
+            updateStatus('正在保存文件...', 'info');
+            
+            const totalBlocks = terrainData.length;
+            const fileSize = 16 + (totalBlocks * 16);
+            const buffer = new ArrayBuffer(fileSize);
+            const dataView = new DataView(buffer);
+            
+            const uint8Array = new Uint8Array(buffer);
+            
+            if (fileHeaderBytes) {
+                uint8Array.set(fileHeaderBytes, 0);
+            } else {
+                dataView.setUint32(0, binInfo.binUnknown1, true);
+                dataView.setUint32(4, binInfo.binUnknown2, true);
+            }
+            
+            dataView.setUint32(8, binInfo.binMapx, true);
+            dataView.setUint32(12, binInfo.binMapy, true);
+            
+            const terrainStart = 16;
+            
+            for (let i = 0; i < terrainData.length; i++) {
+                const block = terrainData[i];
+                const offset = terrainStart + i * 16;
+                
+                dataView.setUint8(offset + 0, block.bmTerrain1Group);
+                dataView.setUint8(offset + 1, block.bmTerrain1Id);
+                dataView.setUint8(offset + 2, block.bmTerrain1X);
+                dataView.setUint8(offset + 3, block.bmTerrain1Y);
+                dataView.setUint8(offset + 4, block.decoration1Group);
+                dataView.setUint8(offset + 5, block.decoration1Id);
+                dataView.setUint8(offset + 6, block.decoration1X);
+                dataView.setUint8(offset + 7, block.decoration1Y);
+                dataView.setUint8(offset + 8, block.decoration2Group);
+                dataView.setUint8(offset + 9, block.decoration2Id);
+                dataView.setUint8(offset + 10, block.decoration2X);
+                dataView.setUint8(offset + 11, block.decoration2Y);
+                dataView.setUint8(offset + 12, block.floorGroup);
+                dataView.setUint8(offset + 13, block.floorId);
+                dataView.setUint8(offset + 14, block.floorX);
+                dataView.setUint8(offset + 15, block.floorY);
+            }
+            
+            const blob = new Blob([buffer], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            const fileInput = document.getElementById('binFile');
+            let fileName = 'edited_map.bin';
+            if (fileInput.files.length > 0) {
+                const originalName = fileInput.files[0].name;
+                fileName = originalName.replace('.bin', '_edited.bin') || 'edited_map.bin';
+            }
+            
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(url);
+            updateStatus('文件已保存', 'success');
+        }
+
+        function exportAsJSON() {
+            if (terrainData.length === 0) {
+                updateStatus('没有数据可导出', 'warning');
+                return;
+            }
+            
+            const exportData = {
+                metadata: {
+                    width: binInfo.binMapx,
+                    height: binInfo.binMapy,
+                    totalBlocks: terrainData.length,
+                    exportDate: new Date().toISOString()
+                },
+                terrainData: terrainData,
+                terrainMap: terrainGroupNameMap
+            };
+            
+            const jsonStr = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'map_data.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            updateStatus('已导出为JSON文件', 'success');
+        }
+
+        function toggleDisplayMode(mode) {
+            if (mode === 'id') {
+                displayMode = true;
+            } else if (mode === 'name') {
+                displayMode = false;
+            } else if (mode === 'both') {
+                displayMode = false;
+            }
+            drawMap();
+        }
+
+        function toggleInfoBox() {
+            const infoBox = document.getElementById('infoBox');
+            infoBox.style.display = infoBox.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function closeInfoBox() {
+            document.getElementById('infoBox').style.display = 'none';
+        }
+
+        function startDrag(e) {
+            e.preventDefault();
+            isDragging = true;
+            const clientX = e.type === 'mousedown' ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type === 'mousedown' ? e.clientY : e.touches[0].clientY;
+            offsetX = clientX - document.getElementById('infoBox').offsetLeft;
+            offsetY = clientY - document.getElementById('infoBox').offsetTop;
+        }
+
+        function moveDrag(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            const clientX = e.type === 'mousemove' ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type === 'mousemove' ? e.clientY : e.touches[0].clientY;
+            const infoBox = document.getElementById('infoBox');
+            infoBox.style.left = (clientX - offsetX) + 'px';
+            infoBox.style.top = (clientY - offsetY) + 'px';
+            infoBox.style.transform = 'none';
+        }
+
+        function endDrag() {
+            isDragging = false;
+        }
+
+        function saveToHistory(description) {
+            const snapshot = terrainData.map(block => ({...block}));
+            operationHistory = operationHistory.slice(0, historyIndex + 1);
+            operationHistory.push({
+                description,
+                data: snapshot,
+                timestamp: new Date().toLocaleTimeString()
+            });
+            historyIndex = operationHistory.length - 1;
+            updateHistoryDisplay();
+        }
+
+        function undo() {
+            if (historyIndex <= 0) {
+                updateStatus('没有更多可撤销的操作', 'warning');
+                return;
+            }
+            
+            historyIndex--;
+            terrainData = operationHistory[historyIndex].data.map(block => ({...block}));
+            drawMap();
+            updateDataTable();
+            updateStatus(`已撤销: ${operationHistory[historyIndex + 1].description}`, 'info');
+        }
+
+        function redo() {
+            if (historyIndex >= operationHistory.length - 1) {
+                updateStatus('没有更多可重做的操作', 'warning');
+                return;
+            }
+            
+            historyIndex++;
+            terrainData = operationHistory[historyIndex].data.map(block => ({...block}));
+            drawMap();
+            updateDataTable();
+            updateStatus(`已重做: ${operationHistory[historyIndex].description}`, 'info');
+        }
+
+        function clearHistory() {
+            operationHistory = [];
+            historyIndex = -1;
+            updateHistoryDisplay();
+            updateStatus('操作历史已清空', 'info');
+        }
+
+        function updateHistoryDisplay() {
+            const historyContainer = document.getElementById('operationHistory');
+            historyContainer.innerHTML = '';
+            
+            operationHistory.slice().reverse().forEach((record, index) => {
+                const reversedIndex = operationHistory.length - 1 - index;
+                const item = document.createElement('div');
+                item.className = `history-item ${reversedIndex === historyIndex ? 'bg-blue-50' : ''}`;
+                item.innerHTML = `
+                    <div class="font-medium">${record.description}</div>
+                    <div class="text-xs text-gray-500">${record.timestamp}</div>
+                `;
+                item.onclick = () => {
+                    historyIndex = reversedIndex;
+                    terrainData = record.data.map(block => ({...block}));
+                    drawMap();
+                    updateDataTable();
+                };
+                historyContainer.appendChild(item);
+            });
+        }
+
+        function updateStatistics() {
+            if (terrainData.length === 0) return;
+            
+            const stats = {
+                '平地': 0, '海洋': 0, '沙漠': 0, '阔叶林': 0, '针叶林': 0,
+                '农田': 0, '坑': 0, '雪地': 0, '其他': 0
+            };
+            
+            terrainData.forEach(block => {
+                const terrainName = terrainGroupNameMap[block.bmTerrain1Group] || '其他';
+                if (stats.hasOwnProperty(terrainName)) {
+                    stats[terrainName]++;
+                } else {
+                    stats['其他']++;
+                }
+            });
+            
+            const statsGrid = document.getElementById('statisticsGrid');
+            statsGrid.innerHTML = '';
+            
+            Object.entries(stats).forEach(([name, count]) => {
+                if (count > 0) {
+                    const percentage = ((count / terrainData.length) * 100).toFixed(1);
+                    const statCard = document.createElement('div');
+                    statCard.className = 'stat-card';
+                    statCard.innerHTML = `
+                        <div class="text-2xl font-bold text-blue-600">${count}</div>
+                        <div class="text-sm text-gray-600">${name}</div>
+                        <div class="text-xs text-gray-500">${percentage}%</div>
+                    `;
+                    statsGrid.appendChild(statCard);
+                }
+            });
+        }
+
+        function updateDataTable() {
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = '';
+            
+            const displayCount = Math.min(50, terrainData.length);
+            
+            for (let i = 0; i < displayCount; i++) {
+                const block = terrainData[i];
+                const terrainName = terrainGroupNameMap[block.bmTerrain1Group] || `组${block.bmTerrain1Group}`;
+                const x = i % binInfo.binMapx;
+                const y = Math.floor(i / binInfo.binMapx);
+                
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="px-4 py-2 text-sm">${i}</td>
+                    <td class="px-4 py-2 text-sm">${terrainName}</td>
+                    <td class="px-4 py-2 text-sm">${block.bmTerrain1Id}</td>
+                    <td class="px-4 py-2 text-sm">(${x}, ${y})</td>
+                    <td class="px-4 py-2 text-sm">
+                        <button onclick="selectBlockInTable(${i})" class="text-blue-600 hover:text-blue-800 text-xs">选择</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            }
+            
+            if (terrainData.length > 50) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="5" class="px-4 py-2 text-sm text-gray-500 text-center">... 还有 ${terrainData.length - 50} 行未显示</td>`;
+                tableBody.appendChild(row);
+            }
+        }
+
+        function selectBlockInTable(index) {
+            selectedBlocks.clear();
+            selectedBlocks.add(index);
+            updateSelectedBlocksDisplay();
+            drawMap();
+            showInfoBox(terrainData[index], index);
+        }
+
+        function updateCurrentMapSize() {
+            if (binInfo.binMapx && binInfo.binMapy) {
+                document.getElementById('currentMapSize').textContent = `${binInfo.binMapx} × ${binInfo.binMapy}`;
+                document.getElementById('newMapWidth').value = binInfo.binMapx;
+                document.getElementById('newMapHeight').value = binInfo.binMapy;
+                updateResizePreview();
+            }
+        }
+
+        function showResizeModal() {
+            if (terrainData.length === 0) {
+                updateStatus('请先加载地图文件', 'warning');
+                return;
+            }
+            
+            document.getElementById('resizeModal').style.display = 'block';
+            updateCurrentMapSize();
+        }
+
+        function closeResizeModal() {
+            document.getElementById('resizeModal').style.display = 'none';
+        }
+
+        function setAnchor(anchor) {
+            resizeAnchor = anchor;
+            document.querySelectorAll('[onclick^="setAnchor"]').forEach(button => {
+                button.classList.remove('bg-blue-100', 'text-blue-700');
+                button.classList.add('bg-gray-100', 'text-gray-700');
+            });
+            event.target.classList.remove('bg-gray-100', 'text-gray-700');
+            event.target.classList.add('bg-blue-100', 'text-blue-700');
+            updateResizePreview();
+        }
+
+        function updateResizePreview() {
+            const newWidth = parseInt(document.getElementById('newMapWidth').value) || binInfo.binMapx;
+            const newHeight = parseInt(document.getElementById('newMapHeight').value) || binInfo.binMapy;
+            const currentWidth = binInfo.binMapx;
+            const currentHeight = binInfo.binMapy;
+            
+            document.getElementById('newSizePreview').textContent = `${newWidth} × ${newHeight}`;
+            document.getElementById('newBlockCount').textContent = newWidth * newHeight;
+            
+            const currentBlocks = currentWidth * currentHeight;
+            const newBlocks = newWidth * newHeight;
+            const blocksChange = newBlocks - currentBlocks;
+            
+            if (blocksChange > 0) {
+                document.getElementById('dataChangeInfo').textContent = `将增加 ${blocksChange} 个地块`;
+                document.getElementById('dataChangeInfo').className = 'text-green-600';
+            } else if (blocksChange < 0) {
+                document.getElementById('dataChangeInfo').textContent = `将减少 ${Math.abs(blocksChange)} 个地块`;
+                document.getElementById('dataChangeInfo').className = 'text-red-600';
+            } else {
+                document.getElementById('dataChangeInfo').textContent = '无变化';
+                document.getElementById('dataChangeInfo').className = 'text-gray-600';
+            }
+        }
+
+        function applyResize() {
+            const newWidth = parseInt(document.getElementById('newMapWidth').value);
+            const newHeight = parseInt(document.getElementById('newMapHeight').value);
+            
+            if (!newWidth || !newHeight || newWidth < 1 || newHeight < 1) {
+                updateStatus('请输入有效的宽度和高度', 'error');
+                return;
+            }
+            
+            if (newWidth > 200 || newHeight > 200) {
+                updateStatus('地图尺寸过大，最大支持200×200', 'error');
+                return;
+            }
+            
+            const resizeOption = document.querySelector('input[name="resizeOption"]:checked').value;
+            
+            saveToHistory(`调整地图大小: ${binInfo.binMapx}×${binInfo.binMapy} -> ${newWidth}×${newHeight}`);
+            
+            const newTerrainData = [];
+            const totalNewBlocks = newWidth * newHeight;
+            
+            if (resizeOption === 'clear') {
+                for (let i = 0; i < totalNewBlocks; i++) {
+                    newTerrainData.push(new TerrainBlock());
+                }
+            } else {
+                const currentWidth = binInfo.binMapx;
+                const currentHeight = binInfo.binMapy;
+                
+                for (let y = 0; y < newHeight; y++) {
+                    for (let x = 0; x < newWidth; x++) {
+                        let srcX = x;
+                        let srcY = y;
+                        
+                        switch (resizeAnchor) {
+                            case 'top-left':
+                                break;
+                            case 'top':
+                                srcX = x - Math.floor((newWidth - currentWidth) / 2);
+                                break;
+                            case 'top-right':
+                                srcX = x - (newWidth - currentWidth);
+                                break;
+                            case 'left':
+                                srcY = y - Math.floor((newHeight - currentHeight) / 2);
+                                break;
+                            case 'center':
+                                srcX = x - Math.floor((newWidth - currentWidth) / 2);
+                                srcY = y - Math.floor((newHeight - currentHeight) / 2);
+                                break;
+                            case 'right':
+                                srcX = x - (newWidth - currentWidth);
+                                srcY = y - Math.floor((newHeight - currentHeight) / 2);
+                                break;
+                            case 'bottom-left':
+                                srcY = y - (newHeight - currentHeight);
+                                break;
+                            case 'bottom':
+                                srcX = x - Math.floor((newWidth - currentWidth) / 2);
+                                srcY = y - (newHeight - currentHeight);
+                                break;
+                            case 'bottom-right':
+                                srcX = x - (newWidth - currentWidth);
+                                srcY = y - (newHeight - currentHeight);
+                                break;
+                        }
+                        
+                        if (srcX >= 0 && srcX < currentWidth && srcY >= 0 && srcY < currentHeight) {
+                            const srcIndex = srcY * currentWidth + srcX;
+                            newTerrainData.push({...terrainData[srcIndex]});
+                        } else {
+                            newTerrainData.push(new TerrainBlock());
+                        }
+                    }
+                }
+            }
+            
+            binInfo.binMapx = newWidth;
+            binInfo.binMapy = newHeight;
+            terrainData = newTerrainData;
+            
+            selectedBlocks.clear();
+            
+            updateCurrentMapSize();
+            updateSelectedBlocksDisplay();
+            drawMap();
+            updateStatistics();
+            updateDataTable();
+            
+            closeResizeModal();
+            updateStatus(`地图已调整为 ${newWidth}×${newHeight}`, 'success');
+        }
+
+        function updateStatus(message, type = 'info') {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = `状态：${message}`;
+            
+            statusElement.className = '';
+            switch (type) {
+                case 'success':
+                    statusElement.classList.add('text-green-600');
+                    break;
+                case 'error':
+                    statusElement.classList.add('text-red-600');
+                    break;
+                case 'warning':
+                    statusElement.classList.add('text-yellow-600');
+                    break;
+                default:
+                    statusElement.classList.add('text-gray-600');
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
