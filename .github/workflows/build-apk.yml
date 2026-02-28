@@ -37,5 +37,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: 手机地形编-APK
+          name: mobile-terrain-apk
           path: app/platforms/android/app/build/outputs/apk/debug/app-debug.apk
